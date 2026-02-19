@@ -24,7 +24,7 @@ from .projection import ProjectionResult, tangent_pca_projection
 
 @dataclass
 class ViewerData:
-    """Complete data payload for the Poincare disk viewer.
+    """Complete data payload for the Poincare disk/sphere viewer.
 
     This is the bridge between the Python data layer and the HTML/JS
     frontend.  Everything the viewer needs is here.
@@ -32,7 +32,7 @@ class ViewerData:
 
     # Core geometry
     coords_2d: Tensor
-    """(N, 2) 2D Poincare disk coordinates."""
+    """(N, 2) 2D Poincare disk coordinates (for 2D viewer)."""
 
     taxon_ids: List[str]
     """N taxon labels."""
@@ -56,13 +56,34 @@ class ViewerData:
     title: str = "BiosphereAtlas"
     projection_variance: List[float] = field(default_factory=list)
 
+    # 3D projection (optional — populated when constructed from high-D embeddings)
+    coords_3d: Optional[Tensor] = field(default=None, repr=False)
+    """(N, 3) 3D Poincare ball coordinates via tangent PCA (for 3D viewer)."""
+    projection_variance_3d: List[float] = field(default_factory=list)
+    """Variance explained by the three 3D PCA components."""
+
     def __post_init__(self):
         self.n_organisms = len(self.taxon_ids)
 
-    def to_json_dict(self) -> Dict[str, Any]:
-        """Serialize to JSON-compatible dictionary for HTML embedding."""
+    def to_json_dict(self, mode: str = "2d") -> Dict[str, Any]:
+        """Serialize to JSON-compatible dictionary for HTML embedding.
+
+        Args:
+            mode: '2d' (Poincaré disk) or '3d' (Poincaré ball).
+        """
+        coords = (
+            self.coords_3d.tolist()
+            if mode == "3d" and self.coords_3d is not None
+            else self.coords_2d.tolist()
+        )
+        variance = (
+            self.projection_variance_3d
+            if mode == "3d" and self.projection_variance_3d
+            else self.projection_variance
+        )
         return {
-            "coords": self.coords_2d.tolist(),
+            "coords": coords,
+            "mode": mode,
             "taxonIds": self.taxon_ids,
             "edges": self.edges,
             "ranks": self.ranks,
@@ -80,12 +101,12 @@ class ViewerData:
             "kappa": self.kappa,
             "nOrganisms": self.n_organisms,
             "title": self.title,
-            "projectionVariance": self.projection_variance,
+            "projectionVariance": variance,
         }
 
-    def to_json(self) -> str:
+    def to_json(self, mode: str = "2d") -> str:
         """Serialize to JSON string."""
-        return json.dumps(self.to_json_dict())
+        return json.dumps(self.to_json_dict(mode=mode))
 
 
 # -- Loaders -------------------------------------------------------------------
@@ -135,9 +156,11 @@ def from_tree(
 
     embeddings = torch.stack(embeddings_list)  # (N, D)
 
-    # Project to 2D
-    proj = tangent_pca_projection(embeddings, kappa)
-    coords_2d = proj.coords_2d
+    # Project to 2D and 3D
+    proj2 = tangent_pca_projection(embeddings, kappa, n_components=2)
+    proj3 = tangent_pca_projection(embeddings, kappa, n_components=3)
+    coords_2d = proj2.coords_2d
+    coords_3d = proj3.coords_2d  # (N, 3) tangent PCA output
 
     # Extract edges between included nodes
     edges = []
@@ -164,7 +187,9 @@ def from_tree(
         rank_bands=rank_bands,
         kappa=kappa,
         title=title,
-        projection_variance=proj.variance_explained,
+        projection_variance=proj2.variance_explained,
+        coords_3d=coords_3d,
+        projection_variance_3d=proj3.variance_explained,
     )
 
 
@@ -228,18 +253,19 @@ def from_embeddings(
         else:
             ranks_list.append(-1)
 
-    # Project to 2D
-    proj = tangent_pca_projection(emb, kappa)
+    # Project to 2D and 3D
+    proj2 = tangent_pca_projection(emb, kappa, n_components=2)
+    proj3 = tangent_pca_projection(emb, kappa, n_components=3)
 
     # Estimate rank bands
     if any(r >= 0 for r in ranks_list):
-        rank_radii = estimate_rank_radii(proj.coords_2d, ranks_list, kappa)
+        rank_radii = estimate_rank_radii(proj2.coords_2d, ranks_list, kappa)
     else:
-        rank_radii = _default_rank_radii(proj.coords_2d, kappa)
+        rank_radii = _default_rank_radii(proj2.coords_2d, kappa)
     rank_bands = compute_rank_bands(rank_radii, kappa)
 
     return ViewerData(
-        coords_2d=proj.coords_2d,
+        coords_2d=proj2.coords_2d,
         taxon_ids=taxon_ids,
         edges=[],
         ranks=ranks_list,
@@ -247,7 +273,9 @@ def from_embeddings(
         rank_bands=rank_bands,
         kappa=kappa,
         title=title,
-        projection_variance=proj.variance_explained,
+        projection_variance=proj2.variance_explained,
+        coords_3d=proj3.coords_2d,
+        projection_variance_3d=proj3.variance_explained,
     )
 
 

@@ -30,6 +30,7 @@ from .projection import (
     project_single,
 )
 from .render import generate_viewer_html
+from .render3d import generate_3d_viewer_html
 
 __all__ = [
     # Data layer
@@ -46,4 +47,5 @@ __all__ = [
     "NavigationState",
     # Rendering
     "generate_viewer_html",
+    "generate_3d_viewer_html",
 ]

@@ -4,8 +4,16 @@ Command-line interface for atlas-viewer.
 
 Usage::
 
+    # 2D interactive Poincaré disk
     atlas-viewer render --tree tree.json -o viewer.html
+
+    # 3D dark-mode Poincaré ball (requires plotly CDN)
+    atlas-viewer render --mode 3d --tree tree.json -o viewer_3d.html
+
+    # From raw embeddings
     atlas-viewer render --embeddings coords.pt --taxa taxa.txt -o viewer.html
+
+    # Data statistics
     atlas-viewer info --tree tree.json
 """
 
@@ -41,8 +49,10 @@ def main(argv=None) -> None:
                           help="Curvature constant (default: 1.247).")
     render_p.add_argument("--canvas-size", type=int, default=900,
                           help="Canvas width/height in pixels.")
-    render_p.add_argument("--color-by", choices=["rank", "depth", "none"],
+    render_p.add_argument("--color-by", choices=["rank", "depth", "domain", "none"],
                           default="rank", help="Coloring scheme.")
+    render_p.add_argument("--mode", choices=["2d", "3d"], default="2d",
+                          help="Viewer mode: 2d (Poincaré disk) or 3d (Poincaré ball).")
 
     # -- info ------------------------------------------------------------------
     info_p = sub.add_parser("info", help="Display data statistics.")
@@ -62,6 +72,10 @@ def main(argv=None) -> None:
 def _cmd_render(args) -> None:
     from .data import from_tree, from_embeddings
     from .render import generate_viewer_html
+    from .render3d import generate_3d_viewer_html
+
+    mode = getattr(args, "mode", "2d")
+    color_by = getattr(args, "color_by", "rank")
 
     # Load data
     if args.tree:
@@ -69,7 +83,7 @@ def _cmd_render(args) -> None:
     elif args.embeddings and args.taxa:
         data = from_embeddings(
             args.embeddings, args.taxa,
-            kappa=args.kappa, lineages=args.lineages,
+            kappa=args.kappa, lineages=getattr(args, "lineages", None),
             title=args.title,
         )
     else:
@@ -77,17 +91,31 @@ def _cmd_render(args) -> None:
         sys.exit(1)
 
     print(f"Loaded {data.n_organisms} organisms, {len(data.edges)} edges")
-    if data.projection_variance:
-        pct = sum(data.projection_variance) * 100
-        print(f"PCA variance explained: {pct:.1f}%")
 
-    generate_viewer_html(
-        data, args.output,
-        title=args.title,
-        canvas_size=args.canvas_size,
-        color_by=args.color_by,
-    )
-    print(f"Viewer written to {args.output}")
+    if mode == "3d":
+        if data.coords_3d is None:
+            print("ERROR: 3D coordinates not available for this data source.", file=sys.stderr)
+            sys.exit(1)
+        if data.projection_variance_3d:
+            pct = sum(data.projection_variance_3d) * 100
+            print(f"3D PCA variance explained: {pct:.1f}%")
+        generate_3d_viewer_html(
+            data, args.output,
+            title=args.title,
+            color_by=color_by if color_by != "rank" else "domain",
+        )
+        print(f"3D viewer written to {args.output}")
+    else:
+        if data.projection_variance:
+            pct = sum(data.projection_variance) * 100
+            print(f"PCA variance explained: {pct:.1f}%")
+        generate_viewer_html(
+            data, args.output,
+            title=args.title,
+            canvas_size=getattr(args, "canvas_size", 900),
+            color_by=color_by,
+        )
+        print(f"2D viewer written to {args.output}")
 
 
 def _cmd_info(args) -> None:
