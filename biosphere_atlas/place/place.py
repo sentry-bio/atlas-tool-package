@@ -16,7 +16,7 @@ import torch
 from torch import Tensor
 
 from biosphere_atlas.place.calibrator import PlacementCalibrator, compute_nonconformity
-from biosphere_atlas.core.atlas import Atlas
+from biosphere_atlas.place.encoder import BiosphereEncoder
 from biosphere_atlas.core.hyperbolic import KAPPA_DEFAULT
 from biosphere_atlas.place.io import read_fasta, write_results_jplace, write_results_json, write_results_tsv
 from biosphere_atlas.place.placer import PlacementEngine, PlacementResult
@@ -28,7 +28,7 @@ from biosphere_atlas.place.reference import Rank, ReferenceDB
 def place_sequences(
     fasta_path: Union[str, Path],
     reference: ReferenceDB,
-    encoder: Optional[Atlas] = None,
+    encoder: Optional[BiosphereEncoder] = None,
     calibrator: Optional[PlacementCalibrator] = None,
     output_path: Optional[Union[str, Path]] = None,
     output_format: str = "tsv",
@@ -46,7 +46,7 @@ def place_sequences(
     Args:
         fasta_path: path to input FASTA.
         reference: populated ReferenceDB.
-        encoder: Atlas (or None for default k-mer encoder).
+        encoder: BiosphereEncoder (or None for default k-mer encoder).
         calibrator: PlacementCalibrator (or None for uncalibrated).
         output_path: optional output file path.
         output_format: 'tsv', 'json', or 'jplace'.
@@ -61,7 +61,7 @@ def place_sequences(
     """
     # Initialize encoder if not provided
     if encoder is None:
-        encoder = Atlas(
+        encoder = BiosphereEncoder(
             embedding_dim=reference.embedding_dim,
             kappa=kappa,
             device=device,
@@ -119,7 +119,7 @@ def place_sequences(
 def place_sequences_streaming(
     fasta_path: Union[str, Path],
     reference: ReferenceDB,
-    encoder: Optional[Atlas] = None,
+    encoder: Optional[BiosphereEncoder] = None,
     calibrator: Optional[PlacementCalibrator] = None,
     top_k: int = 5,
     mode: str = "flat",
@@ -132,7 +132,7 @@ def place_sequences_streaming(
     Memory-efficient for large FASTA files.
     """
     if encoder is None:
-        encoder = Atlas(
+        encoder = BiosphereEncoder(
             embedding_dim=reference.embedding_dim,
             kappa=kappa,
             device=device,

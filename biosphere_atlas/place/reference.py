@@ -19,12 +19,8 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 import torch
 from torch import Tensor
 
-from biosphere_atlas.core.hyperbolic import (
-    KAPPA_DEFAULT,
-    _clamp_to_ball,
-    karcher_mean,
-    poincare_distance,
-)
+from biosphere_atlas.core.hyperbolic import KAPPA_DEFAULT, karcher_mean, poincare_distance
+from biosphere_atlas.core.hyperbolic import _clamp_to_ball
 
 
 # ── Taxonomy ranks (GTDB convention) ────────────────────────────────────────

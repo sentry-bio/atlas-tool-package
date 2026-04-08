@@ -17,11 +17,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import torch
 from torch import Tensor
 
-from biosphere_atlas.core.hyperbolic import (
-    KAPPA_DEFAULT,
-    dist_from_origin,
-    poincare_distance,
-)
+from biosphere_atlas.core.hyperbolic import KAPPA_DEFAULT, dist_from_origin, poincare_distance
 from biosphere_atlas.place.index import NNResult, PlacementIndex
 from biosphere_atlas.place.reference import Prototype, Rank, ReferenceDB
 

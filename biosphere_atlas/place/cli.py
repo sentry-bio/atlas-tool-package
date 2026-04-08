@@ -153,7 +153,7 @@ def build_parser() -> argparse.ArgumentParser:
 def cmd_place(args: argparse.Namespace) -> None:
     """Execute the place command."""
     from biosphere_atlas.place.calibrator import PlacementCalibrator
-    from biosphere_atlas.core.atlas import Atlas
+    from biosphere_atlas.place.encoder import BiosphereEncoder
     from biosphere_atlas.place.place import place_sequences, placement_summary
     from biosphere_atlas.place.reference import ReferenceDB
 
@@ -179,7 +179,7 @@ def cmd_place(args: argparse.Namespace) -> None:
         print()
 
     # Initialize encoder
-    encoder = Atlas(
+    encoder = BiosphereEncoder(
         model_path=args.model,
         embedding_dim=reference.embedding_dim,
         kappa=args.kappa,

@@ -29,13 +29,7 @@ import numpy as np
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from biosphere_atlas.core.hyperbolic import (
-    KAPPA_DEFAULT,
-    karcher_mean,
-    log_map,
-    poincare_distance,
-    dist_from_origin,
-)
+from biosphere_atlas.core.hyperbolic import KAPPA_DEFAULT, karcher_mean, log_map, poincare_distance, dist_from_origin
 
 
 @dataclass

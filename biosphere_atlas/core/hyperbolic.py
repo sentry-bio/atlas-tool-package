@@ -18,14 +18,8 @@ from torch import Tensor
 
 # ── Universal constants ──────────────────────────────────────────────────────
 
-KAPPA_DEFAULT: float = 1.247
-"""Universal curvature constant for multi-domain life (Fenn & Fenn 2025)."""
-
-KAPPA_FUNCTIONAL: float = 1.0
-"""Curvature of the functional-clustering (liquid) phase."""
-
-KAPPA_PHYLOGENETIC: float = 1.2475
-"""Curvature of the full phylogenetic-tree (crystal) phase."""
+KAPPA_DEFAULT: float = 1.25
+"""BiosphereCoordinate v1.0 datum constant (κ = 5/4, exactly). Fixed by specification."""
 
 BOUNDARY_EPS: float = 1e-5
 """Safety margin inside the ball boundary."""

@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Living Geometry - Tree of Life</title>
+    <style>
+        :root {
+            --bacteria: #4CAF50;
+            --archaea: #FF9800;
+            --eukaryota: #2196F3;
+            --asgard: #E91E63;
+            --bg: #050508;
+            --panel: rgba(15, 15, 20, 0.92);
+            --text: #e0e0e0;
+            --accent: #4CAF50;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            overflow: hidden;
+            background: var(--bg);
+            color: var(--text);
+        }
+        #container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* Left Panel - Input */
+        #left-panel {
+            width: 320px;
+            background: var(--panel);
+            backdrop-filter: blur(20px);
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid rgba(255,255,255,0.05);
+        }
+
+        /* Right Panel - Lineage */
+        #right-panel {
+            width: 280px;
+            background: var(--panel);
+            backdrop-filter: blur(20px);
+            padding: 25px;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid rgba(255,255,255,0.05);
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        #right-panel.visible { opacity: 1; }
+
+        /* Visualization */
+        #viz {
+            flex-grow: 1;
+            position: relative;
+        }
+
+        /* Typography */
+        h1 {
+            margin: 0 0 5px 0;
+            font-weight: 600;
+            font-size: 1.5em;
+            background: linear-gradient(135deg, var(--bacteria), var(--eukaryota));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .subtitle {
+            font-size: 0.75em;
+            color: #666;
+            margin-bottom: 25px;
+        }
+        h3 {
+            margin: 0 0 8px 0;
+            font-weight: 500;
+            font-size: 0.7em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #666;
+        }
+
+        /* Input */
+        textarea {
+            width: 100%;
+            height: 140px;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: #ccc;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 11px;
+            resize: none;
+            margin-bottom: 12px;
+            transition: border-color 0.2s;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        textarea::placeholder { color: #444; }
+
+        /* Button */
+        button {
+            background: linear-gradient(135deg, var(--bacteria), #388E3C);
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9em;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px rgba(76,175,80,0.3);
+        }
+        button:active { transform: translateY(0); }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Results */
+        #results {
+            margin-top: 25px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            padding-top: 20px;
+            opacity: 0;
+            transition: opacity 0.4s;
+        }
+        #results.visible { opacity: 1; }
+
+        .result-row { margin-bottom: 12px; }
+        .label {
+            display: block;
+            font-size: 0.65em;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 3px;
+        }
+        .value {
+            font-size: 1.1em;
+            font-weight: 500;
+        }
+        .conf {
+            font-size: 0.7em;
+            margin-left: 8px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.05);
+        }
+        .high-conf { color: var(--accent); background: rgba(76,175,80,0.15); }
+
+        /* Domain colors */
+        .domain-bacteria { color: var(--bacteria); }
+        .domain-archaea { color: var(--archaea); }
+        .domain-eukaryota { color: var(--eukaryota); }
+
+        /* Lineage tree */
+        .lineage-node {
+            padding: 8px 12px;
+            margin: 4px 0;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.03);
+            border-left: 3px solid transparent;
+            font-size: 0.85em;
+            transition: all 0.3s;
+        }
+        .lineage-node.active {
+            background: rgba(76,175,80,0.1);
+            border-left-color: var(--accent);
+        }
+        .lineage-rank {
+            font-size: 0.6em;
+            color: #555;
+            text-transform: uppercase;
+            display: block;
+        }
+
+        /* Status indicator */
+        #status {
+            position: fixed;
+            top: 15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--panel);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.75em;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 100;
+        }
+        #status.visible { opacity: 1; }
+
+        /* Legend */
+        #legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: var(--panel);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 0.7em;
+            z-index: 10;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 4px 0;
+        }
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        /* Kappa badge */
+        #kappa-badge {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: var(--panel);
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-size: 0.75em;
+            z-index: 10;
+        }
+        .kappa-value {
+            font-size: 1.4em;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: auto;
+            font-size: 0.65em;
+            color: #444;
+            text-align: center;
+            padding-top: 15px;
+        }
+
+        /* Loading animation */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .loading { animation: pulse 1.5s ease-in-out infinite; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="left-panel">
+            <h1>Living Geometry</h1>
+            <div class="subtitle">Hyperbolic Tree of Life | V5 Model</div>
+
+            <h3>DNA Sequence</h3>
+            <textarea id="sequence" placeholder=">sequence_name
+ATCGATCGATCG...
+
+Paste FASTA or raw sequence"></textarea>
+
+            <button id="predictBtn" onclick="runInference()">
+                Trace Lineage
+            </button>
+
+            <div id="results">
+                <h3>Classification</h3>
+                <div class="result-row">
+                    <span class="label">Domain</span>
+                    <span class="value" id="res-domain">-</span>
+                </div>
+                <div class="result-row">
+                    <span class="label">Family</span>
+                    <span class="value" id="res-family">-</span>
+                    <span class="conf" id="res-fam-conf">-</span>
+                </div>
+                <div class="result-row">
+                    <span class="label">Genus</span>
+                    <span class="value" id="res-genus">-</span>
+                    <span class="conf" id="res-gen-conf">-</span>
+                </div>
+
+                <h3 style="margin-top:20px;">Hyperbolic Position</h3>
+                <div class="result-row">
+                    <span class="label">Poincare Coordinates</span>
+                    <div class="value" style="font-family:monospace; font-size:0.8em; color:#888;" id="res-coords">-</div>
+                </div>
+                <div class="result-row">
+                    <span class="label">Geodesic Distance from LUCA</span>
+                    <div class="value" id="res-distance">-</div>
+                </div>
+            </div>
+
+            <div class="footer">
+                Tree of Life Kernel V5<br>
+                500 Reference Genomes
+            </div>
+        </div>
+
+        <div id="viz">
+            <div id="legend">
+                <div class="legend-item"><div class="legend-dot" style="background:var(--bacteria)"></div>Bacteria</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--archaea)"></div>Archaea</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--eukaryota)"></div>Eukaryota</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--asgard)"></div>Asgard (Bridge)</div>
+            </div>
+            <div id="kappa-badge">
+                <div style="color:#666;font-size:0.8em;">Curvature</div>
+                <div class="kappa-value">-1.250</div>
+            </div>
+        </div>
+
+        <div id="right-panel">
+            <h3>Evolutionary Journey</h3>
+            <div id="lineage-tree">
+                <div class="lineage-node" id="ln-luca">
+                    <span class="lineage-rank">Origin</span>
+                    LUCA
+                </div>
+                <div class="lineage-node" id="ln-domain">
+                    <span class="lineage-rank">Domain</span>
+                    <span id="lt-domain">-</span>
+                </div>
+                <div class="lineage-node" id="ln-phylum">
+                    <span class="lineage-rank">Phylum</span>
+                    <span id="lt-phylum">-</span>
+                </div>
+                <div class="lineage-node" id="ln-class">
+                    <span class="lineage-rank">Class</span>
+                    <span id="lt-class">-</span>
+                </div>
+                <div class="lineage-node" id="ln-order">
+                    <span class="lineage-rank">Order</span>
+                    <span id="lt-order">-</span>
+                </div>
+                <div class="lineage-node" id="ln-family">
+                    <span class="lineage-rank">Family</span>
+                    <span id="lt-family">-</span>
+                </div>
+                <div class="lineage-node" id="ln-genus">
+                    <span class="lineage-rank">Genus</span>
+                    <span id="lt-genus">-</span>
+                </div>
+            </div>
+
+            <div style="margin-top:auto; padding-top:20px; border-top:1px solid rgba(255,255,255,0.05);">
+                <h3>Nearest Neighbors</h3>
+                <div id="neighbors" style="font-size:0.8em; color:#888;">
+                    Run inference to see neighbors
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="status">Loading reference genomes...</div>
+
+    <script type="module">
+        import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+        import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+
+        // ============================================
+        // HYPERBOLIC GEOMETRY UTILITIES
+        // ============================================
+
+        const KAPPA = 1.250;  // Learned curvature
+        const c = Math.sqrt(KAPPA);  // Poincare ball parameter
+
+        // Mobius addition in Poincare ball
+        function mobiusAdd(x, y) {
+            const xx = x.dot(x);
+            const yy = y.dot(y);
+            const xy = x.dot(y);
+            const c2 = c * c;
+
+            const num1 = (1 + 2*c2*xy + c2*yy);
+            const num2 = (1 - c2*xx);
+            const denom = 1 + 2*c2*xy + c2*c2*xx*yy;
+
+            return new THREE.Vector3(
+                (num1 * x.x + num2 * y.x) / denom,
+                (num1 * x.y + num2 * y.y) / denom,
+                (num1 * x.z + num2 * y.z) / denom
+            );
+        }
+
+        // Hyperbolic distance in Poincare ball
+        function hyperbolicDistance(p1, p2) {
+            const diff = new THREE.Vector3().subVectors(p1, p2);
+            const diffNorm = diff.length();
+            const p1Norm = p1.length();
+            const p2Norm = p2.length();
+
+            const num = 2 * diffNorm * diffNorm;
+            const denom = (1 - p1Norm*p1Norm) * (1 - p2Norm*p2Norm);
+
+            if (denom <= 0) return Infinity;
+            return (1/c) * Math.acosh(1 + num/denom);
+        }
+
+        // Generate geodesic curve between two points in Poincare ball
+        function generateGeodesic(p1, p2, segments = 50) {
+            const points = [];
+
+            // Negative of p1 for Mobius subtraction
+            const negP1 = new THREE.Vector3(-p1.x, -p1.y, -p1.z);
+
+            // Transform p2 to origin-centered coordinates
+            const p2_centered = mobiusAdd(negP1, p2);
+
+            for (let i = 0; i <= segments; i++) {
+                const t = i / segments;
+
+                // Interpolate along the geodesic (scaled direction from origin)
+                const scale = t;
+                const intermediate = new THREE.Vector3(
+                    p2_centered.x * scale,
+                    p2_centered.y * scale,
+                    p2_centered.z * scale
+                );
+
+                // Transform back
+                const point = mobiusAdd(p1, intermediate);
+
+                // Clamp to ball
+                const norm = point.length();
+                if (norm >= 0.99) {
+                    point.multiplyScalar(0.99 / norm);
+                }
+
+                points.push(point);
+            }
+
+            return points;
+        }
+
+        // ============================================
+        // THREE.JS SCENE SETUP
+        // ============================================
+
+        const container = document.getElementById('viz');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050508);
+
+        const camera = new THREE.PerspectiveCamera(
+            55,
+            container.clientWidth / container.clientHeight,
+            0.1,
+            100
+        );
+        camera.position.set(2.5, 1.8, 2.5);
+
+        const renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            alpha: true
+        });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        container.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.3;
+        controls.minDistance = 1.5;
+        controls.maxDistance = 5;
+
+        // Ambient light
+        scene.add(new THREE.AmbientLight(0x404040, 0.5));
+
+        // Point lights for depth
+        const light1 = new THREE.PointLight(0x4CAF50, 0.5);
+        light1.position.set(3, 3, 3);
+        scene.add(light1);
+
+        const light2 = new THREE.PointLight(0x2196F3, 0.3);
+        light2.position.set(-3, -2, 2);
+        scene.add(light2);
+
+        // ============================================
+        // POINCARE BALL BOUNDARY
+        // ============================================
+
+        // Outer boundary sphere
+        const boundaryGeo = new THREE.SphereGeometry(1, 64, 64);
+        const boundaryMat = new THREE.MeshBasicMaterial({
+            color: 0x222233,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.08
+        });
+        const boundary = new THREE.Mesh(boundaryGeo, boundaryMat);
+        scene.add(boundary);
+
+        // Equatorial disc (guide)
+        const discGeo = new THREE.RingGeometry(0.001, 1, 64);
+        const discMat = new THREE.MeshBasicMaterial({
+            color: 0x333344,
+            transparent: true,
+            opacity: 0.1,
+            side: THREE.DoubleSide
+        });
+        const disc = new THREE.Mesh(discGeo, discMat);
+        disc.rotation.x = Math.PI / 2;
+        scene.add(disc);
+
+        // Origin (LUCA) marker
+        const lucaGeo = new THREE.SphereGeometry(0.025, 32, 32);
+        const lucaMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.8
+        });
+        const luca = new THREE.Mesh(lucaGeo, lucaMat);
+        scene.add(luca);
+
+        // LUCA glow
+        const lucaGlowGeo = new THREE.SphereGeometry(0.05, 16, 16);
+        const lucaGlowMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.15
+        });
+        const lucaGlow = new THREE.Mesh(lucaGlowGeo, lucaGlowMat);
+        scene.add(lucaGlow);
+
+        // ============================================
+        // REFERENCE GENOME RENDERING
+        // ============================================
+
+        const DOMAIN_COLORS = {
+            'Bacteria': 0x4CAF50,
+            'Archaea': 0xFF9800,
+            'Eukaryota': 0x2196F3
+        };
+
+        let referenceData = [];
+        let referencePoints = [];  // THREE.Mesh objects
+        let inferenceMarker = null;
+        let geodesicLine = null;
+
+        // Load reference genomes
+        async function loadReferenceGenomes() {
+            const status = document.getElementById('status');
+            status.classList.add('visible');
+
+            try {
+                const response = await fetch('/static/living_geometry_data_mini.json');
+                referenceData = await response.json();
+
+                renderReferenceGenomes();
+
+                status.textContent = `Loaded ${referenceData.length} reference genomes`;
+                setTimeout(() => status.classList.remove('visible'), 2000);
+
+            } catch (e) {
+                status.textContent = 'Failed to load reference data';
+                console.error(e);
+            }
+        }
+
+        function renderReferenceGenomes() {
+            // Clear existing
+            referencePoints.forEach(p => scene.remove(p));
+            referencePoints = [];
+
+            const pointGeo = new THREE.SphereGeometry(0.012, 8, 8);
+
+            referenceData.forEach((genome, idx) => {
+                const [x, y, z] = genome.embedding_3d;
+                const isAsgard = genome.is_asgard;
+
+                let color = DOMAIN_COLORS[genome.domain] || 0x666666;
+                if (isAsgard) color = 0xE91E63;  // Asgard highlight
+
+                const mat = new THREE.MeshBasicMaterial({
+                    color: color,
+                    transparent: true,
+                    opacity: isAsgard ? 0.9 : 0.5
+                });
+
+                const point = new THREE.Mesh(pointGeo, mat);
+                point.position.set(x, y, z);
+                point.userData = { index: idx, genome: genome };
+
+                scene.add(point);
+                referencePoints.push(point);
+            });
+
+            console.log(`Rendered ${referencePoints.length} reference points`);
+        }
+
+        // ============================================
+        // INFERENCE MARKER AND GEODESIC
+        // ============================================
+
+        function createInferenceMarker() {
+            if (inferenceMarker) scene.remove(inferenceMarker);
+
+            const geo = new THREE.SphereGeometry(0.035, 32, 32);
+            const mat = new THREE.MeshStandardMaterial({
+                color: 0xFFFFFF,
+                emissive: 0xFFFFFF,
+                emissiveIntensity: 0.3,
+                roughness: 0.2,
+                metalness: 0.8
+            });
+
+            inferenceMarker = new THREE.Mesh(geo, mat);
+            inferenceMarker.visible = false;
+            scene.add(inferenceMarker);
+        }
+        createInferenceMarker();
+
+        function updateInferencePosition(coords, domain) {
+            const [x, y, z] = coords;
+            const position = new THREE.Vector3(x, y, z);
+
+            // Update marker
+            inferenceMarker.position.copy(position);
+            inferenceMarker.visible = true;
+
+            // Color by domain
+            const color = DOMAIN_COLORS[domain] || 0xFFFFFF;
+            inferenceMarker.material.color.setHex(color);
+            inferenceMarker.material.emissive.setHex(color);
+
+            // Draw geodesic from origin
+            drawGeodesicToOrigin(position);
+
+            // Calculate hyperbolic distance
+            const dist = hyperbolicDistance(new THREE.Vector3(0,0,0), position);
+            return dist;
+        }
+
+        function drawGeodesicToOrigin(targetPos) {
+            if (geodesicLine) scene.remove(geodesicLine);
+
+            const origin = new THREE.Vector3(0, 0, 0);
+            const geodesicPoints = generateGeodesic(origin, targetPos, 60);
+
+            // Convert to buffer geometry
+            const positions = [];
+            geodesicPoints.forEach(p => positions.push(p.x, p.y, p.z));
+
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+
+            const mat = new THREE.LineBasicMaterial({
+                color: 0x4CAF50,
+                transparent: true,
+                opacity: 0.6,
+                linewidth: 2
+            });
+
+            geodesicLine = new THREE.Line(geo, mat);
+            scene.add(geodesicLine);
+        }
+
+        // ============================================
+        // FIND NEAREST NEIGHBORS
+        // ============================================
+
+        function findNearestNeighbors(coords, k = 5) {
+            const target = new THREE.Vector3(...coords);
+
+            const distances = referenceData.map((genome, idx) => ({
+                idx,
+                genome,
+                dist: hyperbolicDistance(target, new THREE.Vector3(...genome.embedding_3d))
+            }));
+
+            distances.sort((a, b) => a.dist - b.dist);
+            return distances.slice(0, k);
+        }
+
+        // ============================================
+        // INFERENCE API CALL
+        // ============================================
+
+        window.runInference = async () => {
+            const seqInput = document.getElementById('sequence').value;
+            const btn = document.getElementById('predictBtn');
+            const results = document.getElementById('results');
+            const rightPanel = document.getElementById('right-panel');
+
+            if (!seqInput || seqInput.trim().length < 20) {
+                alert("Please enter a valid DNA sequence (min 20 bp)");
+                return;
+            }
+
+            // Parse FASTA
+            let seq = seqInput.trim();
+            if (seq.startsWith('>')) {
+                const lines = seq.split('\n');
+                seq = lines.slice(1).join('').replace(/\s/g, '');
+            } else {
+                seq = seq.replace(/\s/g, '');
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Tracing...';
+            btn.classList.add('loading');
+            controls.autoRotate = false;
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sequence: seq })
+                });
+
+                if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
+                const data = await response.json();
+
+                // Update results panel
+                document.getElementById('res-domain').textContent = data.domain || 'Unknown';
+                document.getElementById('res-domain').className = `value domain-${(data.domain || '').toLowerCase()}`;
+
+                document.getElementById('res-family').textContent = data.family || '-';
+                const famConf = data.family_confidence || 0;
+                document.getElementById('res-fam-conf').textContent = `${(famConf*100).toFixed(1)}%`;
+                document.getElementById('res-fam-conf').className = famConf > 0.5 ? 'conf high-conf' : 'conf';
+
+                document.getElementById('res-genus').textContent = data.genus || '-';
+                const genConf = data.genus_confidence || 0;
+                document.getElementById('res-gen-conf').textContent = `${(genConf*100).toFixed(1)}%`;
+                document.getElementById('res-gen-conf').className = genConf > 0.5 ? 'conf high-conf' : 'conf';
+
+                document.getElementById('res-coords').textContent =
+                    `[${data.coordinates.map(n => n.toFixed(4)).join(', ')}]`;
+
+                // Update 3D visualization
+                const hypDist = updateInferencePosition(data.coordinates, data.domain);
+                document.getElementById('res-distance').textContent = hypDist.toFixed(3);
+
+                // Update lineage panel
+                document.getElementById('lt-domain').textContent = data.domain || '-';
+                document.getElementById('lt-phylum').textContent = data.phylum || '-';
+                document.getElementById('lt-class').textContent = data.class || '-';
+                document.getElementById('lt-order').textContent = data.order || '-';
+                document.getElementById('lt-family').textContent = data.family || '-';
+                document.getElementById('lt-genus').textContent = data.genus || '-';
+
+                // Animate lineage highlighting
+                animateLineage();
+
+                // Find and display nearest neighbors
+                const neighbors = findNearestNeighbors(data.coordinates, 5);
+                displayNeighbors(neighbors);
+
+                // Show panels
+                results.classList.add('visible');
+                rightPanel.classList.add('visible');
+
+                // Camera focus
+                focusOnPoint(data.coordinates);
+
+            } catch (e) {
+                alert("Inference failed: " + e.message);
+                console.error(e);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Trace Lineage';
+                btn.classList.remove('loading');
+            }
+        };
+
+        function animateLineage() {
+            const nodes = ['ln-luca', 'ln-domain', 'ln-phylum', 'ln-class', 'ln-order', 'ln-family', 'ln-genus'];
+
+            nodes.forEach((id, i) => {
+                const node = document.getElementById(id);
+                node.classList.remove('active');
+
+                setTimeout(() => {
+                    node.classList.add('active');
+                }, i * 200);
+            });
+        }
+
+        function displayNeighbors(neighbors) {
+            const container = document.getElementById('neighbors');
+            container.innerHTML = neighbors.map((n, i) => `
+                <div style="margin:6px 0; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <span style="color:#666;">${i+1}.</span>
+                    <span style="color:${n.genome.is_asgard ? '#E91E63' : '#aaa'};">
+                        ${n.genome.genus || n.genome.family || 'Unknown'}
+                    </span>
+                    <span style="float:right; color:#555; font-size:0.8em;">
+                        d=${n.dist.toFixed(2)}
+                    </span>
+                </div>
+            `).join('');
+        }
+
+        function focusOnPoint(coords) {
+            // Gentle camera animation toward the inference point
+            const [x, y, z] = coords;
+            const targetPos = new THREE.Vector3(x, y, z);
+
+            // Don't change camera dramatically, just ensure point is visible
+            controls.target.lerp(new THREE.Vector3(0, 0, 0), 0.5);
+        }
+
+        // ============================================
+        // ANIMATION LOOP
+        // ============================================
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // Gentle LUCA pulse
+            const t = Date.now() * 0.001;
+            lucaGlow.scale.setScalar(1 + 0.1 * Math.sin(t * 2));
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // ============================================
+        // WINDOW RESIZE
+        // ============================================
+
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+
+        // ============================================
+        // INITIALIZE
+        // ============================================
+
+        loadReferenceGenomes();
+
+    </script>
+</body>
+</html>

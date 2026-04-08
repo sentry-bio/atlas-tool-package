@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "biosphere-atlas"
-version = "0.2.0"
+version = "1.0.0"
 description = "Unified BiosphereAtlas toolkit — geometric genomics tools for the tree of life"
 readme = "README.md"
 license = { text = "MIT" }

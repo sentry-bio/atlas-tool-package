@@ -100,8 +100,9 @@ def extract_coordinate(
     # Euclidean radius (for Poincare disk visualization)
     r_euc = embedding.norm().item()
 
-    # Angular: use first two dimensions for 2D projection
-    # In the full BiosphereCodec, these align with the dominant phylogenetic axes
+    # Angular: use first two dimensions as a lightweight proxy.
+    # TODO(v0.3): switch to tangent-space PCA projection for theta to stay
+    # consistent with atlas-viewer and future depth-aware architectures.
     x = embedding[0].item()
     y = embedding[1].item()
     theta = np.arctan2(y, x) % (2 * np.pi)

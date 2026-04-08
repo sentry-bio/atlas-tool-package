@@ -16,16 +16,24 @@ Usage:
               f"coordinate=({r.coordinate.r:.3f}, {r.coordinate.theta:.3f})")
 """
 
+import numpy as np
 import torch
 from dataclasses import dataclass, asdict
 from typing import List, Optional, Iterator
 from pathlib import Path
 
-from biosphere_atlas.core.atlas import Atlas
+from biosphere_atlas.chimera.encoder import BiosphereEncoder
 from biosphere_atlas.chimera.chimera import score_chimera, ChimeraScore
-from biosphere_atlas.core.coordinates import extract_coordinate, BiosphereCoordinate
 from biosphere_atlas.core.hyperbolic import KAPPA_DEFAULT
-from biosphere_atlas.core.io import read_fasta
+from biosphere_atlas.core.coordinates import extract_coordinate, BiosphereCoordinate
+from biosphere_atlas.chimera.io import read_fasta
+
+
+def _to_tensor(x) -> torch.Tensor:
+    """Convert numpy array or tensor to torch tensor."""
+    if isinstance(x, np.ndarray):
+        return torch.from_numpy(x).float()
+    return x.float()
 
 
 @dataclass
@@ -67,7 +75,8 @@ def detect_chimeras(
     window_size: int = 1000,
     stride: int = 500,
     device: str = "cpu",
-    batch_size: int = 32,
+    api_url: Optional[str] = None,
+    api_key: Optional[str] = None,
     verbose: bool = False,
 ) -> List[ChimeraResult]:
     """
@@ -104,8 +113,10 @@ def detect_chimeras(
         ...     print(f"{r.sequence_id}: ({r.coordinate.r:.3f}, {r.coordinate.theta:.3f})")
     """
     # Initialize encoder
-    encoder = Atlas(
+    encoder = BiosphereEncoder(
         model_path=model_path,
+        api_url=api_url,
+        api_key=api_key,
         device=device,
         kappa=kappa,
         window_size=window_size,
@@ -122,24 +133,16 @@ def detect_chimeras(
         iterator = sequences
 
     for header, sequence in iterator:
-        # Encode: get sub-sequence embeddings and full embedding
-        sub_embeddings, full_embedding = encoder.encode_subsequences(sequence)
+        sub_emb, full_emb = encoder.encode_subsequences(sequence)
 
-        # Score chimera
         chimera_score = score_chimera(
-            sub_embeddings,
-            kappa=kappa,
-            threshold=threshold,
+            _to_tensor(sub_emb), kappa=kappa, threshold=threshold,
         )
-
-        # Extract BiosphereAtlas coordinate from full embedding
-        coordinate = extract_coordinate(full_embedding, kappa=kappa)
+        coordinate = extract_coordinate(_to_tensor(full_emb), kappa=kappa)
 
         results.append(ChimeraResult(
-            sequence_id=header,
-            length=len(sequence),
-            chimera=chimera_score,
-            coordinate=coordinate,
+            sequence_id=header, length=len(sequence),
+            chimera=chimera_score, coordinate=coordinate,
         ))
 
     return results
@@ -153,6 +156,8 @@ def detect_chimeras_streaming(
     window_size: int = 1000,
     stride: int = 500,
     device: str = "cpu",
+    api_url: Optional[str] = None,
+    api_key: Optional[str] = None,
 ) -> Iterator[ChimeraResult]:
     """
     Streaming version of detect_chimeras for large files.
@@ -163,8 +168,10 @@ def detect_chimeras_streaming(
     Yields:
         ChimeraResult objects, one per input sequence
     """
-    encoder = Atlas(
+    encoder = BiosphereEncoder(
         model_path=model_path,
+        api_url=api_url,
+        api_key=api_key,
         device=device,
         kappa=kappa,
         window_size=window_size,
@@ -172,19 +179,14 @@ def detect_chimeras_streaming(
     )
 
     for header, sequence in read_fasta(input_path):
-        sub_embeddings, full_embedding = encoder.encode_subsequences(sequence)
+        sub_emb, full_emb = encoder.encode_subsequences(sequence)
 
         chimera_score = score_chimera(
-            sub_embeddings,
-            kappa=kappa,
-            threshold=threshold,
+            _to_tensor(sub_emb), kappa=kappa, threshold=threshold,
         )
-
-        coordinate = extract_coordinate(full_embedding, kappa=kappa)
+        coordinate = extract_coordinate(_to_tensor(full_emb), kappa=kappa)
 
         yield ChimeraResult(
-            sequence_id=header,
-            length=len(sequence),
-            chimera=chimera_score,
-            coordinate=coordinate,
+            sequence_id=header, length=len(sequence),
+            chimera=chimera_score, coordinate=coordinate,
         )

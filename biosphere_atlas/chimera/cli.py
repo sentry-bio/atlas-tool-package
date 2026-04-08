@@ -2,11 +2,14 @@
 Command-line interface for atlas-chimera.
 
 Usage:
-    # Basic chimera detection
+    # Basic chimera detection (uses BiosphereAtlas API by default)
     atlas-chimera input.fasta -o results.tsv
 
-    # With GPU acceleration
-    atlas-chimera input.fasta -o results.tsv --device cuda
+    # With local model (offline, no API calls)
+    atlas-chimera input.fasta --local --model /path/to/checkpoint.pt -o results.tsv
+
+    # Custom API endpoint
+    atlas-chimera input.fasta --api-url https://api.biosphereatlas.com --api-key YOUR_KEY
 
     # Adjust curvature for viral datasets
     atlas-chimera viral_metagenome.fasta --kappa 1.35 -o results.tsv
@@ -16,9 +19,6 @@ Usage:
 
     # Stream large files without loading all into memory
     atlas-chimera large_metagenome.fasta --stream -o results.tsv
-
-    # Coordinates only (skip chimera detection, just place sequences)
-    atlas-chimera input.fasta --coordinates-only -o coordinates.tsv
 """
 
 import argparse
@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 
 from biosphere_atlas.chimera.detect import detect_chimeras, detect_chimeras_streaming
-from biosphere_atlas.core.io import write_results_tsv, write_results_json
+from biosphere_atlas.chimera.io import write_results_tsv, write_results_json
 from biosphere_atlas.core.hyperbolic import KAPPA_DEFAULT
 
 
@@ -37,8 +37,12 @@ def main():
         description=(
             "Geometry-based chimera detection using hyperbolic embeddings.\n\n"
             "Detects chimeric sequences by identifying geometric anomalies in\n"
-            "the BiosphereAtlas coordinate system. Every sequence receives both\n"
-            "a chimera score and a universal (r, theta) coordinate.\n\n"
+            "the Poincare ball coordinate system. A genuine sequence occupies a\n"
+            "coherent region; a chimera is pulled toward multiple phylogenetic\n"
+            "neighborhoods, producing high variance and bimodal tangent-space\n"
+            "structure.\n\n"
+            "By default, uses the BiosphereAtlas API for embeddings (no model\n"
+            "download required). Use --local for offline inference.\n\n"
             "Reference: Fenn & Fenn (2025). Evolution as Active Geometry."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -59,48 +63,65 @@ def main():
         default="tsv",
         help="Output format (default: tsv)",
     )
-    parser.add_argument(
+
+    # Encoder mode
+    mode_group = parser.add_argument_group("encoder mode")
+    mode_group.add_argument(
+        "--api-url",
+        default=None,
+        help="BiosphereAtlas API URL (default: https://api.biosphereatlas.com)",
+    )
+    mode_group.add_argument(
+        "--api-key",
+        default=None,
+        help="API key (or set BIOSPHERE_API_KEY env var)",
+    )
+    mode_group.add_argument(
+        "--local",
+        action="store_true",
+        help="Use local model instead of API (requires --model)",
+    )
+    mode_group.add_argument(
         "--model",
         default=None,
-        help="Path to BiosphereCodec model weights",
+        help="Path to local model checkpoint (requires --local)",
     )
+
+    # Detection parameters
     parser.add_argument(
         "--kappa",
         type=float,
         default=KAPPA_DEFAULT,
-        help=(
-            f"Curvature parameter (default: {KAPPA_DEFAULT}). "
-            "Use ~1.2 for recent outbreaks, ~1.6 for deep reservoirs."
-        ),
+        help=f"Curvature parameter (default: {KAPPA_DEFAULT})",
     )
     parser.add_argument(
         "--threshold",
         type=float,
         default=0.5,
-        help="Chimera score threshold for binary calls (default: 0.5)",
+        help="Chimera score threshold (default: 0.5)",
     )
     parser.add_argument(
         "--window-size",
         type=int,
         default=1000,
-        help="Sub-sequence window size in nucleotides (default: 1000)",
+        help="Sub-sequence window size in bp (default: 1000)",
     )
     parser.add_argument(
         "--stride",
         type=int,
         default=500,
-        help="Window stride in nucleotides (default: 500)",
+        help="Window stride in bp (default: 500, i.e. 50%% overlap)",
     )
     parser.add_argument(
         "--device",
         choices=["cpu", "cuda"],
         default="cpu",
-        help="Compute device (default: cpu)",
+        help="Compute device for local mode (default: cpu)",
     )
     parser.add_argument(
         "--stream",
         action="store_true",
-        help="Stream results for large files (lower memory usage)",
+        help="Stream results for large files (lower memory)",
     )
     parser.add_argument(
         "-v", "--verbose",
@@ -110,7 +131,7 @@ def main():
     parser.add_argument(
         "--version",
         action="version",
-        version="atlas-chimera 0.1.0",
+        version="atlas-chimera 0.2.0",
     )
 
     args = parser.parse_args()
@@ -121,31 +142,33 @@ def main():
         print(f"Error: input file not found: {args.input}", file=sys.stderr)
         sys.exit(1)
 
+    # Determine model path
+    model_path = args.model if args.local else None
+    if args.local and not args.model:
+        print("Error: --local requires --model <path>", file=sys.stderr)
+        sys.exit(1)
+
     # Run detection
     t0 = time.time()
+    common_kwargs = dict(
+        model_path=model_path,
+        kappa=args.kappa,
+        threshold=args.threshold,
+        window_size=args.window_size,
+        stride=args.stride,
+        device=args.device,
+        api_url=args.api_url,
+        api_key=args.api_key,
+    )
 
     if args.stream:
-        results = []
-        for result in detect_chimeras_streaming(
-            str(input_path),
-            model_path=args.model,
-            kappa=args.kappa,
-            threshold=args.threshold,
-            window_size=args.window_size,
-            stride=args.stride,
-            device=args.device,
-        ):
-            results.append(result.to_dict())
+        results = [
+            r.to_dict()
+            for r in detect_chimeras_streaming(str(input_path), **common_kwargs)
+        ]
     else:
         raw_results = detect_chimeras(
-            str(input_path),
-            model_path=args.model,
-            kappa=args.kappa,
-            threshold=args.threshold,
-            window_size=args.window_size,
-            stride=args.stride,
-            device=args.device,
-            verbose=args.verbose,
+            str(input_path), verbose=args.verbose, **common_kwargs,
         )
         results = [r.to_dict() for r in raw_results]
 
@@ -157,16 +180,14 @@ def main():
     else:
         write_results_json(results, args.output)
 
-    # Summary to stderr
+    # Summary
     n_total = len(results)
     n_chimeric = sum(1 for r in results if r["is_chimera"])
+    pct = n_chimeric / max(n_total, 1) * 100
+    mode = "local" if args.local else "API"
     print(
-        f"\natlas-chimera: {n_total} sequences processed in {elapsed:.1f}s "
-        f"({n_chimeric} chimeras detected, {n_chimeric/max(n_total,1)*100:.1f}%)",
-        file=sys.stderr,
-    )
-    print(
-        f"All sequences assigned BiosphereAtlas coordinates (kappa={args.kappa})",
+        f"\natlas-chimera ({mode}): {n_total} sequences in {elapsed:.1f}s "
+        f"| {n_chimeric} chimeras ({pct:.1f}%) | kappa={args.kappa}",
         file=sys.stderr,
     )
 
